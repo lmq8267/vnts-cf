@@ -1,0 +1,27 @@
+{
+  "name": "vnts-ws-relay",
+  "version": "1.0.0",
+  "description": "VNT WebSocket Relay for Cloudflare Workers",
+  "main": "src/worker.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --ip 0.0.0.0",
+    "start": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "protobufjs": "^8.0.0",
+    "wrangler": "^3.0.0"
+  },
+  "keywords": [
+    "vnt",
+    "websocket",
+    "cloudflare-workers",
+    "durable-objects",
+    "vpn",
+    "p2p"
+  ],
+  "author": "",
+  "license": "MIT"
+}
