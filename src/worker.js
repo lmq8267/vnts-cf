@@ -40,6 +40,10 @@ export default {
 
     // 添加日志端点
     if (pathname === "/log" || pathname === "/log/clear") {
+      // 检查是否启用了日志密码  
+      if (!env.LOG_PASSWORD || env.LOG_PASSWORD.trim() === "") {  
+        return new Response("Not found", { status: 404 });  
+      }
       const roomId = searchParams.get("room") || "default";
       const roomStub = env.RELAY_ROOM.get(env.RELAY_ROOM.idFromName(roomId));
       return roomStub.fetch(request);

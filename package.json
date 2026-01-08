@@ -18,9 +18,7 @@
     "vnt",
     "websocket",
     "cloudflare-workers",
-    "durable-objects",
-    "vpn",
-    "p2p"
+    "durable-objects"
   ],
   "author": "",
   "license": "MIT"

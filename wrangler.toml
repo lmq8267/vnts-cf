@@ -24,8 +24,11 @@ SERVER_ENCRYPT = "false"
 # 是否禁用中继转发： 0 允许中继  1 仅P2P
 DISABLE_RELAY = "0"
 
-# 心跳检查间隔时间，检查客户端是否已经断开的连接 单位：秒
-HEARTBEAT_INTERVAL = "10"
+# 心跳检查间隔时间，检查客户端已经断开的连接进行清理(频率较高)单位：秒
+HEARTBEAT_INTERVAL = "120"
+
+# 健康检查间隔时间，检查所有已经断开的连接进行清理（频率较低）单位：秒
+HEALTH_CHECK_INTERVAL = "3600"
 
 # 每分钟请求限制（/room 和 /test 端点）  
 RATE_LIMIT_PER_MINUTE = "30"
