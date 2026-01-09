@@ -63,8 +63,14 @@ class ExpireMap {
 
     for (const [key, item] of this.map.entries()) {
       if (now > item.expireTime) {
+        let displayKey = key;
+        if (Array.isArray(key) && key.length === 2) {
+          // 如果key是[token, ip]格式，转换IP地址
+          const [token, ip] = key;
+          displayKey = `[Token: ${token} IP: ${formatIp(ip)}]`;
+        }
         logger.debug(
-          `[过期映射-清理] 删除过期项: ${key} (过期于: ${formatBeijingTime(
+          `[过期映射-清理] 删除过期项: ${displayKey} (过期于: ${formatBeijingTime(
             new Date(item.expireTime)
           )})`
         );

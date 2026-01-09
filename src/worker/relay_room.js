@@ -166,17 +166,82 @@ export class RelayRoom {
         this.packetHandler.cache.networks = new Map();
       }
 
-      // 将 virtual_network 中的数据同步到 networks
-      let restoredNetworks = 0; // 定义变量
-      for (const [
-        token,
-        networkInfo,
-      ] of restoredCache.virtual_network.map.entries()) {
+      // 将 virtual_network 中的数据同步到 networks，并清理过期客户端
+      let restoredNetworks = 0;
+      let cleanedClients = 0;
+      let cleanedNetworks = 0;
+      const now = Date.now();
+      const offlineThreshold = 24 * 3600 * 1000; // 24小时
+      let hasChanges = false; // 标记是否有清理操作
+
+      const mapKeys = Array.from(restoredCache.virtual_network.map.keys());
+      for (const token of mapKeys) {
         const item = restoredCache.virtual_network.map.get(token);
         if (item && Date.now() <= item.expireTime) {
-          this.packetHandler.cache.networks.set(token, item.value);
-          restoredNetworks++; // 计算恢复的网络数
+          const networkInfo = item.value;
+
+          // 检查并清理过期客户端
+          const clientsToDelete = [];
+          if (networkInfo && networkInfo.clients) {
+            for (const [
+              virtualIp,
+              clientInfo,
+            ] of networkInfo.clients.entries()) {
+              // 如果客户端离线且有离线时间戳，检查是否超过24小时
+              if (
+                !clientInfo.online &&
+                clientInfo.offline_timestamp &&
+                now - clientInfo.offline_timestamp >= offlineThreshold
+              ) {
+                clientsToDelete.push(virtualIp);
+              }
+            }
+
+            // 删除过期客户端
+            for (const virtualIp of clientsToDelete) {
+              const deletedClient = networkInfo.clients.get(virtualIp);
+              networkInfo.clients.delete(virtualIp);
+              cleanedClients++;
+              hasChanges = true;
+              logger.info(
+                `[AppCache-恢复] 清理离线超过24小时的客户端: ${
+                  deletedClient.name
+                } ID:${
+                  deletedClient.device_id
+                } IP:${this.packetHandler.formatIp(virtualIp)}`
+              );
+            }
+
+            // 检查是否只有网关（没有实际客户端）
+            const hasOnlyGateway =
+              networkInfo.clients.size === 1 && networkInfo.clients.has(0);
+
+            // 只有在清理后还有实际客户端时才恢复
+            if (networkInfo.clients.size > 0 && !hasOnlyGateway) {
+              this.packetHandler.cache.networks.set(token, item.value);
+              restoredNetworks++;
+            } else if (hasOnlyGateway) {
+              // 如果只有网关，清理整个网络
+              cleanedNetworks++;
+              hasChanges = true;
+              logger.info(`[AppCache-恢复] 清理只有网关的网络: Token ${token}`);
+            }
+          }
         }
+      }
+
+      // 如果有清理操作，立即保存到存储
+      if (hasChanges) {
+        // 清理 ip_session 中的过期记录
+        const ipSessionKeys = Array.from(restoredCache.ip_session.map.keys());
+        for (const key of ipSessionKeys) {
+          const item = restoredCache.ip_session.map.get(key);
+          if (item && Date.now() > item.expireTime) {
+            restoredCache.ip_session.map.delete(key);
+          }
+        }
+        await this.saveAppCache(true); // 跳过初始化检查
+        logger.debug(`[AppCache-恢复] 清理完成，保存到存储`);
       }
 
       // logger.debug("restore", "成功恢复 AppCache", {totalNetworks: restoredCache.virtual_network.map.size,restoredNetworks: restoredNetworks,});
@@ -191,7 +256,7 @@ export class RelayRoom {
   }
 
   // 保存 AppCache 到存储
-  async saveAppCache() {
+  async saveAppCache(skipInitCheck = false) {
     // 检查是否为本地部署
     const isLocalDeploy = this.env.LOCAL_DEPLOY === "true";
     if (isLocalDeploy) {
@@ -200,7 +265,7 @@ export class RelayRoom {
     }
 
     // 检查是否已经完成初始化恢复
-    if (!this.isInitialized) {
+    if (!skipInitCheck && !this.isInitialized) {
       return;
     }
 
@@ -1168,7 +1233,46 @@ export class RelayRoom {
           
         .stat-total {  
             border-left: 4px solid #667eea;  
-        }  
+        }
+        
+        .sortable {    
+            cursor: pointer;    
+            user-select: none;   
+        }    
+            
+        .sortable:hover {    
+            background-color: rgba(102, 126, 234, 0.1);    
+        }    
+            
+        .sort-indicator {    
+            display: inline-block;
+            margin-left: 2px; 
+            vertical-align: middle;   
+            font-size: inherit;
+            font-weight: bold;  
+            transition: all 0.2s ease;
+            position: relative;
+            top: -4px;  
+        }
+        
+        .sort-indicator.active {    
+    		color: #fff;    
+    		text-shadow: 0 0 3px rgba(255, 255, 255, 0.5);    
+	}    
+  
+	.sort-indicator .hint {    
+    		color: rgba(255, 255, 255, 0.4);    
+    		font-size: inherit;    
+	}    
+  
+	.sortable:hover .sort-indicator .hint {    
+    		color: rgba(255, 255, 255, 0.7);    
+	}    
+  
+	.sortable:hover .sort-indicator.active {    
+    		transform: scale(1.2); 
+    		top: -4px;   
+	}
           
         @media (max-width: 768px) {  
             .container {  
@@ -1251,7 +1355,14 @@ export class RelayRoom {
                     <table>  
                         <thead>  
                             <tr>  
-                                <th>虚拟IP</th>  
+                                <th @click="sortBy('虚拟IP')" class="sortable">    
+            				虚拟IP  
+            				<span class="sort-indicator" :class="{ active: sortKey === '虚拟IP' }">    
+                				<span v-if="sortKey === '虚拟IP' && sortOrder === 'asc'">↑</span>    
+                				<span v-else-if="sortKey === '虚拟IP' && sortOrder === 'desc'">↓</span>    
+                				<span v-else class="hint">↕</span>    
+            				</span>    
+        			 </th>
                                 <th>主机名</th>  
                                 <th>版本</th>  
                                 <th>状态</th>  
@@ -1260,7 +1371,14 @@ export class RelayRoom {
                                 <th>加密</th>  
                                 <th>上传流量</th>  
                                 <th>下载流量</th>
-                                <th>上线时间</th> 
+                                <th @click="sortBy('上线时间')" class="sortable">    
+            				上线时间  
+            				<span class="sort-indicator" :class="{ active: sortKey === '上线时间' }">    
+                				<span v-if="sortKey === '上线时间' && sortOrder === 'asc'">↑</span>    
+                				<span v-else-if="sortKey === '上线时间' && sortOrder === 'desc'">↓</span>    
+                				<span v-else class="hint">↕</span>    
+            				</span>    
+        			 </th>
                             </tr>  
                         </thead>  
                         <tbody>  
@@ -1323,18 +1441,57 @@ export class RelayRoom {
                     ],  
                     currentPage: 1,  
                     pageSize: 10,
+                    sortKey: '',
+                    sortOrder: 'asc',
                     // 统计数据  
                     totalClients: ${deviceList.length - 1}, // 减去服务器  
-                    onlineClients: ${onlineCount},  
-                    offlineClients: ${offlineCount} 
+                    onlineClients: ${onlineCount},
+                    offlineClients: ${offlineCount}
                 };  
             },  
-            computed: {  
-                filteredDevices() {  
-                    if (this.currentFilter === 'all') return this.devices;  
-                    if (this.currentFilter === 'online') return this.devices.filter(d => d.状态 === '在线');  
-                    if (this.currentFilter === 'offline') return this.devices.filter(d => d.状态 === '离线');  
-                    return this.devices;  
+            computed: {
+            	// 排序后的设备列表  
+                sortedDevices() {
+                    // 先分离网关和客户端  
+                    const gateway = this.devices.find(d => d.类型 === '网关');
+                    const clients = this.devices.filter(d => d.类型 !== '网关');
+                      
+                    // 如果没有设置排序键，返回原始顺序
+                    if (!this.sortKey) {
+                        return gateway ? [gateway, ...clients] : clients;
+                    }
+                     
+                    // 对客户端进行排序  
+                    const sortedClients = [...clients].sort((a, b) => {
+                        let aVal = a[this.sortKey];
+                        let bVal = b[this.sortKey];
+                          
+                        // 特殊处理IP地址排序  
+                        if (this.sortKey === '虚拟IP') {
+                            aVal = this.ipToNumber(aVal);
+                            bVal = this.ipToNumber(bVal);
+                        }
+                          
+                        // 特殊处理时间排序  
+                        if (this.sortKey === '上线时间') {
+                            aVal = new Date(aVal).getTime();
+                            bVal = new Date(bVal).getTime();
+                        }
+                          
+                        if (aVal < bVal) return this.sortOrder === 'asc' ? -1 : 1;
+                        if (aVal > bVal) return this.sortOrder === 'asc' ? 1 : -1;
+                        return 0;    
+                    });
+                      
+                    // 网关始终排在第一  
+                    return gateway ? [gateway, ...sortedClients] : sortedClients;
+                },
+                filteredDevices() {
+                    let devices = this.sortedDevices;
+                    if (this.currentFilter === 'all') return devices;
+                    if (this.currentFilter === 'online') return devices.filter(d => d.状态 === '在线');
+                    if (this.currentFilter === 'offline') return devices.filter(d => d.状态 === '离线');
+                    return devices;
                 },  
                 totalPages() {  
                     if (this.pageSize === 'all') return 1;  
@@ -1347,7 +1504,27 @@ export class RelayRoom {
                     return this.filteredDevices.slice(start, end);  
                 }  
             },  
-            methods: {  
+            methods: {
+            	// 排序方法
+                sortBy(key) {
+                    if (this.sortKey === key) {
+                        // 如果点击的是当前排序列，切换排序顺序
+                        this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        // 如果点击的是新列，设置为升序
+                        this.sortKey = key;
+                        this.sortOrder = 'asc';
+                    }
+                    this.currentPage = 1; // 重置到第一页
+                },
+                // IP地址转换为数字用于排序  
+                ipToNumber(ip) {
+                    if (!ip) return 0;
+                    const parts = ip.split('.');
+                    return parts.reduce((acc, part, index) => {
+                        return acc + (parseInt(part) || 0) * Math.pow(256, 3 - index);
+                    }, 0);
+                },
                 setFilter(filter) {  
                     this.currentFilter = filter;  
                     this.currentPage = 1;  
@@ -2639,7 +2816,7 @@ export class RelayRoom {
   }
 
   async relayPacket(sourceClientId, data, header) {
-    logger.info(
+    logger.debug(
       `开始转发数据包从 ${sourceClientId} 到 ${this.packetHandler.formatIp(
         header.destination
       )}`

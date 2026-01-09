@@ -16,15 +16,19 @@ sudo docker build -t vnts-cf .
 sudo docker run --rm -it -p 29872:8787 -v $(pwd):/app -v /app/node_modules vnts-cf
 ```
 
+vnt客户端采用 `-s ws://ip:29872/vnt` 连接
+
 ## CF部署
 
 1.fork此仓库
 
-2.登陆CF，管理worekes 新建链接到github仓库为刚刚fork的，直接部署
+2.登录[Cloudflare Dashboard](https://dash.cloudflare.com)
 
-3.添加自定义域名
+3.进入 Workers & Pages → 创建应用程序（Create Application） →  Workers →  链接到github仓库 选择你刚刚fork的仓库，直接部署
 
-4.vnt客户端采用 `-s wss://域名/vnt` 连接
+4.绑定自定义域名：打开 Worker 设置 → Triggers(域和路由) → 添加 → Custom Domains(自定义域名)，添加你的域名并保存。
+
+5.vnt客户端采用 `-s wss://域名/vnt` 连接
 
 **测试服务是否正常 `http://域名/test`**
 
@@ -34,24 +38,24 @@ sudo docker run --rm -it -p 29872:8787 -v $(pwd):/app -v /app/node_modules vnts-
 
 <img width="1227" height="338" alt="图片" src="https://github.com/user-attachments/assets/7ee7e4b6-9622-4ed0-98bb-d90e5fd5778c" />
 
-**查看访问运行日志 `http://域名/log`** 需要设置 `LOG_PASSWORD` 才能开放
+**查看访问CF里的运行日志 `http://域名/log`** 需要设置 `LOG_PASSWORD` 才能开放
 
 <img width="1284" height="375" alt="image" src="https://github.com/user-attachments/assets/ad855b2f-1982-4cce-b8aa-4173aabc71ab" />
 
 
 ## 仅 P2P 模式
 
-在 `wrangler.toml` 的 `[vars]` 中配置：
+在 `wrangler.toml` 的 `[vars]` 中找到配置：
 - `DISABLE_RELAY`: `"1"` 开启仅 P2P 直连模式，默认 `"0"`
 
 ## 开启Token白名单
 
-在 `wrangler.toml` 的 `[vars]` 中配置：
+在 `wrangler.toml` 的 `[vars]` 中找到配置：
 - `WHITE_TOKEN`: `"token1,token2,token3"` 填写对应的token即可开启，多个token用逗号分隔，默认 `""` 留空任何token都可以连接注册使用
 
-## 开启调试日志
+## 开启CF日志
 
-在 `wrangler.toml` 的 `[vars]` 中配置：
+在 `wrangler.toml` 的 `[vars]` 中找到配置：
 - `LOG_PASSWORD`: `"password"` 设置密码即可开启，默认 `""` 留空不开启，注意：开启日志会消耗免费额度，日常使用请勿开启！
 
 
